@@ -24,14 +24,12 @@
         const offset = 0;
         let currentOffset = offset;
         const chunkId = getCC(dataView, currentOffset);
-        const chunkSize = dataView.getUint32(currentOffset + 4, true);
+        // const chunkSize = dataView.getUint32(currentOffset + 4, true);
         const format = getCC(dataView, currentOffset + 8);
         currentOffset += 12;
         if (chunkId === 'RIFF' && format === 'WEBP') {
           const formatType = getCC(dataView, currentOffset);
           const formatSize = dataView.getUint32(currentOffset + 4, true);
-          console.log('formatType:', formatType);
-          console.log('formatSize:', formatSize);
           currentOffset += 8;
           let hasExif = false;
           if (formatType === 'VP8X') {
@@ -477,7 +475,7 @@
 
     function findEXIFinWEBP(file) { // ArrayBuffer
         const exifData = riffReader(file);
-        console.log(exifData);
+        //console.log(exifData);
         if (exifData == null) return false;
 
         const dummyHeader = new TextEncoder().encode('Exif\0\0'); 
