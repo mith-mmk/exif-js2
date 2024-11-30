@@ -19,6 +19,63 @@
         root.EXIF = EXIF;
     }
 
+    function riffReader(buffer) {
+        const dataView = new DataView(buffer);
+        const offset = 0;
+        let currentOffset = offset;
+        const chunkId = getCC(dataView, currentOffset);
+        const chunkSize = dataView.getUint32(currentOffset + 4, true);
+        const format = getCC(dataView, currentOffset + 8);
+        currentOffset += 12;
+        if (chunkId === 'RIFF' && format === 'WEBP') {
+          const formatType = getCC(dataView, currentOffset);
+          const formatSize = dataView.getUint32(currentOffset + 4, true);
+          console.log('formatType:', formatType);
+          console.log('formatSize:', formatSize);
+          currentOffset += 8;
+          let hasExif = false;
+          if (formatType === 'VP8X') {
+            // flags
+            const flags = dataView.getUint8(currentOffset);
+            if (flags & 0x8) {
+                if (debug) console.log('has EXIF metadata');
+              hasExif = true;
+            }
+          }
+          if (!hasExif) {
+            if (debug) console.log('No EXIF metadata found');
+            return null;
+          }
+          currentOffset += formatSize;
+          do {
+            const chunkId = getCC(dataView, currentOffset);
+            const chunkSize = dataView.getUint32(currentOffset + 4, true);
+            if (chunkId === 'EXIF') {
+              break;
+            }
+            currentOffset += 8 + chunkSize;
+          } while (currentOffset < buffer.byteLength);
+          // const exifId = getCC(dataView, currentOffset);
+          const exifSize = dataView.getUint32(currentOffset + 4, true);
+          currentOffset += 8;
+          const exifBuffer = buffer.slice(currentOffset, currentOffset + exifSize);
+          return exifBuffer;
+          // call exif parser
+        } else {
+            if (debug) console.log('Not a valid WEBP file');
+        }
+        return null;
+      }
+      
+    function getCC(dataView, offset) {
+      return String.fromCharCode(
+        dataView.getUint8(offset),
+        dataView.getUint8(offset + 1),
+        dataView.getUint8(offset + 2),
+        dataView.getUint8(offset + 3)
+      );
+    }
+
     var ExifTags = EXIF.Tags = {
 
         // version tags
@@ -367,7 +424,7 @@
 
     function getImageData(img, callback) {
         function handleBinaryFile(binFile) {
-            var data = findEXIFinJPEG(binFile);
+            var data = findEXIFinWEBP(binFile) || findEXIFinJPEG(binFile);
             img.exifdata = data || {};
             var iptcdata = findIPTCinJPEG(binFile);
             img.iptcdata = iptcdata || {};
@@ -416,6 +473,21 @@
 
             fileReader.readAsArrayBuffer(img);
         }
+    }
+
+    function findEXIFinWEBP(file) { // ArrayBuffer
+        const exifData = riffReader(file);
+        console.log(exifData);
+        if (exifData == null) return false;
+
+        const dummyHeader = new TextEncoder().encode('Exif\0\0'); 
+
+        // join exif header and exif data
+        const exifDataWithHeader = new Uint8Array(dummyHeader.length + exifData.byteLength);
+        exifDataWithHeader.set(dummyHeader, 0);
+        exifDataWithHeader.set(new Uint8Array(exifData), dummyHeader.length);
+        const dataView = new DataView(exifDataWithHeader.buffer);
+        return readEXIFData(dataView, 0, exifDataWithHeader.byteLength);
     }
 
     function findEXIFinJPEG(file) {
@@ -1047,7 +1119,8 @@
     }
 
     EXIF.readFromBinaryFile = function(file) {
-        return findEXIFinJPEG(file);
+        const exif = findEXIFinWEBP(file) || findEXIFinJPEG(file);
+        return exif;
     }
 
     if (typeof define === 'function' && define.amd) {
